@@ -1,0 +1,74 @@
+#!/bin/bash
+
+expression_path="$1"
+named_gatacas="$2"
+
+function fail() {
+  echo 'failed with message: ' $@
+  exit 1
+}
+
+test -n "$expression_path" || fail 'provide expression file (arg 1)'
+test -n "$named_gatacas" || fail 'provide gataca file (arg 2)'
+test -f "$expression_path" || fail "expression file not found"
+test -f "$named_gatacas" || fail "gataca file not found"
+
+named_gatacas_length="$(echo $(cat $named_gatacas | wc -l))" # super gross hack to trim whitespace and only get number
+
+function tabs_to_spaces() {
+  sed 's/	/ /g'
+}
+
+function first_column() {
+  cut -d ' ' -f1
+}
+
+function filter_expression_name() {
+  tabs_to_spaces |
+  first_column
+}
+
+function search_for_matches_as_line_numbers_of_name() {
+  local expression_name="$1"
+  grep -n $expression_name $named_gatacas |
+  cut -d ':' -f1
+}
+
+function read_this_and_following_line_from() {
+  local first_line=$1
+  local file_name=$2
+  head -n $(($first_line + 1)) $file_name | tail -n 2
+}
+
+function works_but_slow_as_shit() {
+  cat $expression_path |
+  filter_expression_name |
+  while read expression; do
+    search_for_matches_as_line_numbers_of_name "$expression"
+  done | while read matching_line; do
+    read_this_and_following_line_from $matching_line $named_gatacas
+  done
+}
+
+
+function show_matching_gene_names() {
+  cat $named_gatacas |
+  grep '>' |
+  sed 's/>//' |
+  while read name
+  do
+    grep $name $expression_path
+  done |
+  filter_expression_name
+}
+
+function main() {
+  echo "$@" | grep -q -e '--slow-but-show' && {
+    works_but_slow_as_shit
+    exit 0
+  }
+  # else
+  show_matching_gene_names
+}
+
+main $@
